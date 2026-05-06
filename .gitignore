@@ -14,4 +14,4 @@ web-build/
 android/
 ios/
 %ProgramData%/
-{src/
+[{]src/
