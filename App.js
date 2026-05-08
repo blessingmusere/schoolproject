@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppProvider, useApp } from './src/context/AppContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddExpenseScreen from './src/screens/AddExpenseScreen';
@@ -76,7 +78,7 @@ function MainTabs() {
 }
 
 function RootNavigator() {
-  const { session, profile, loading } = useApp();
+  const { session, profile, loading, passwordRecovery } = useApp();
 
   if (loading) {
     return (
@@ -90,10 +92,13 @@ function RootNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!session ? (
+        {passwordRecovery ? (
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+        ) : !session ? (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         ) : !profile ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />

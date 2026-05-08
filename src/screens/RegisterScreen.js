@@ -13,14 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signUp } from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
-
-const withTimeout = (promise, label) =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} is taking too long. Check your connection and try again.`)), 20000),
-    ),
-  ]);
+import { getFriendlyAuthError, withTimeout } from '../utils/authErrors';
 
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -66,7 +59,7 @@ export default function RegisterScreen({ navigation }) {
         setTimeout(() => navigation.navigate('Login'), 1200);
       }
     } catch (err) {
-      const message = err.message || 'Could not create your account.';
+      const message = getFriendlyAuthError(err, 'Could not create your account. Please try again.');
       setNotice(message);
       if (Platform.OS !== 'web') Alert.alert('Registration failed', message);
     } finally {

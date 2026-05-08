@@ -11,6 +11,7 @@ export const AppProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -24,13 +25,16 @@ export const AppProvider = ({ children }) => {
       else setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+        setLoading(false);
+      } else if (session) {
         setLoading(true);
         loadUserData(session.user.id);
-      }
-      else {
+      } else {
+        setPasswordRecovery(false);
         setProfile(null);
         setExpenses([]);
         setLoading(false);
@@ -74,6 +78,10 @@ export const AppProvider = ({ children }) => {
     setProfile(nextProfile);
   };
 
+  const completePasswordRecovery = () => {
+    setPasswordRecovery(false);
+  };
+
   const getMonthExpenses = () => {
     const now = new Date();
     return expenses.filter((expense) => {
@@ -115,9 +123,11 @@ export const AppProvider = ({ children }) => {
         profile,
         expenses,
         loading,
+        passwordRecovery,
         refreshExpenses,
         refreshProfile,
         completeProfile,
+        completePasswordRecovery,
         getMonthExpenses,
         getTotalSpent,
         getBalance,

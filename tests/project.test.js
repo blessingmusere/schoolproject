@@ -21,6 +21,16 @@ test('AI proxy function is documented and present', () => {
   assert.match(envExample, /EXPO_PUBLIC_AI_PROXY_URL/);
 });
 
+test('password reset screens are wired into the app', () => {
+  const app = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const supabaseService = fs.readFileSync(path.join(root, 'src/services/supabase.js'), 'utf8');
+
+  assert.match(app, /ForgotPassword/);
+  assert.match(app, /ResetPassword/);
+  assert.match(supabaseService, /resetPasswordForEmail/);
+  assert.match(supabaseService, /updateUser\(\{ password \}\)/);
+});
+
 test('README reflects Gemini rather than stale OpenAI setup', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.match(readme, /Gemini 2\.5 Flash/);

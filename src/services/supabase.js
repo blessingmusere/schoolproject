@@ -9,6 +9,14 @@ const hasValidSupabaseUrl = /^https:\/\/.+\.supabase\.co$/.test(supabaseUrl || '
 
 const getAuthRedirectUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/reset-password`;
+  }
+
+  return Linking.createURL('reset-password');
+};
+
+const getEmailRedirectUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
     return `${window.location.origin}/auth/callback`;
   }
 
@@ -62,7 +70,7 @@ export const signUp = async (email, password, name) => {
     password,
     options: {
       data: { full_name: name },
-      emailRedirectTo: getAuthRedirectUrl(),
+      emailRedirectTo: getEmailRedirectUrl(),
     },
   });
   if (error) throw error;
@@ -107,6 +115,22 @@ export const getSession = async () => {
     data: { session },
   } = await client.auth.getSession();
   return session;
+};
+
+export const sendPasswordResetEmail = async (email) => {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.resetPasswordForEmail(email, {
+    redirectTo: getAuthRedirectUrl(),
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const updatePassword = async (password) => {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.updateUser({ password });
+  if (error) throw error;
+  return data;
 };
 
 export const saveProfile = async (userId, profile) => {

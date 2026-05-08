@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signIn } from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
+import { getFriendlyAuthError, withTimeout } from '../utils/authErrors';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -35,14 +36,9 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     setNotice('');
     try {
-      await Promise.race([
-        signIn(email.trim().toLowerCase(), password),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Sign in is taking too long. Check your connection and try again.')), 20000),
-        ),
-      ]);
+      await withTimeout(signIn(email.trim().toLowerCase(), password), 'Sign in');
     } catch (err) {
-      const message = err.message || 'Invalid email or password.';
+      const message = getFriendlyAuthError(err, 'Could not sign in. Check your details and try again.');
       setNotice(message);
       if (Platform.OS !== 'web') Alert.alert('Login failed', message);
     } finally {
@@ -91,6 +87,13 @@ export default function LoginScreen({ navigation }) {
 
           <Button title="Sign in" onPress={handleLogin} loading={loading} />
 
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ForgotPassword', { email: email.trim().toLowerCase() })}
+            style={styles.forgotWrap}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => navigation.navigate('Register')} style={styles.linkWrap}>
             <Text style={styles.linkText}>
               No account? <Text style={styles.link}>Create one</Text>
@@ -125,6 +128,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   noticeText: { color: COLORS.danger, fontSize: SIZES.sm, lineHeight: 18 },
+  forgotWrap: { alignItems: 'center', marginTop: 14 },
+  forgotText: { color: COLORS.primary, fontSize: SIZES.sm, ...FONTS.semibold },
   linkWrap: { alignItems: 'center', marginTop: 20 },
   linkText: { fontSize: SIZES.base, color: COLORS.textSecondary },
   link: { color: COLORS.primary, ...FONTS.semibold },
