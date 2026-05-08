@@ -14,7 +14,7 @@ import { addExpense, deleteExpense, updateExpense } from '../services/supabase';
 import { useApp } from '../context/AppContext';
 import { Button, Input, Card } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
-import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../constants/finance';
+import { EXPENSE_CATEGORIES, PAYMENT_METHODS, addUniqueValue, normalizeListValue } from '../constants/finance';
 
 const toDateInput = (value) => {
   const date = value ? new Date(value) : new Date();
@@ -32,8 +32,10 @@ const newForm = () => ({
 });
 
 export default function AddExpenseScreen() {
-  const { session, expenses, refreshExpenses, formatMoney } = useApp();
+  const { session, profile, expenses, refreshExpenses, formatMoney } = useApp();
   const [form, setForm] = useState(newForm());
+  const [customCategory, setCustomCategory] = useState('');
+  const [extraCategories, setExtraCategories] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [amountError, setAmountError] = useState('');
@@ -112,6 +114,24 @@ export default function AddExpenseScreen() {
   };
 
   const recent = expenses.slice(0, 8);
+  const categoryLabels = [
+    ...new Set([
+      ...EXPENSE_CATEGORIES.map((item) => item.label),
+      ...(profile?.categories || []),
+      ...extraCategories,
+    ]),
+  ];
+  const getCategoryIcon = (label) =>
+    EXPENSE_CATEGORIES.find((item) => item.label.toLowerCase() === label.toLowerCase())?.icon ||
+    'pricetag-outline';
+
+  const addCategory = () => {
+    const normalized = normalizeListValue(customCategory);
+    if (!normalized) return;
+    setExtraCategories((prev) => addUniqueValue(prev, normalized));
+    setField('category', normalized);
+    setCustomCategory('');
+  };
 
   return (
     <KeyboardAvoidingView
@@ -149,23 +169,39 @@ export default function AddExpenseScreen() {
 
         <Text style={styles.catLabel}>Category</Text>
         <View style={styles.catGrid}>
-          {EXPENSE_CATEGORIES.map((category) => (
+          {categoryLabels.map((category) => (
             <TouchableOpacity
-              key={category.label}
-              style={[styles.catCard, form.category === category.label && styles.catCardSelected]}
-              onPress={() => setField('category', category.label)}
+              key={category}
+              style={[styles.catCard, form.category === category && styles.catCardSelected]}
+              onPress={() => setField('category', category)}
               activeOpacity={0.75}
             >
               <Ionicons
-                name={category.icon}
+                name={getCategoryIcon(category)}
                 size={22}
-                color={form.category === category.label ? COLORS.primary : COLORS.textSecondary}
+                color={form.category === category ? COLORS.primary : COLORS.textSecondary}
               />
-              <Text style={[styles.catText, form.category === category.label && styles.catTextSelected]}>
-                {category.label}
+              <Text style={[styles.catText, form.category === category && styles.catTextSelected]}>
+                {category}
               </Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={styles.customBox}>
+          <Input
+            label="Add custom category"
+            value={customCategory}
+            onChangeText={setCustomCategory}
+            placeholder="e.g. School fees"
+            style={{ marginBottom: 10 }}
+          />
+          <Button
+            title="Add category"
+            variant="secondary"
+            onPress={addCategory}
+            disabled={!customCategory.trim()}
+          />
         </View>
 
         <Input
@@ -297,6 +333,14 @@ const styles = StyleSheet.create({
   methodChipSelected: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
   methodText: { color: COLORS.textSecondary, fontSize: SIZES.sm },
   methodTextSelected: { color: COLORS.primary, ...FONTS.medium },
+  customBox: {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: SIZES.radius,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
   recentTitle: { marginTop: 26, marginBottom: 12 },
   expRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   expBorder: { borderBottomWidth: 0.5, borderBottomColor: COLORS.borderLight },

@@ -14,6 +14,14 @@ import { signUp } from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
 
+const withTimeout = (promise, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} is taking too long. Check your connection and try again.`)), 20000),
+    ),
+  ]);
+
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,6 +29,7 @@ export default function RegisterScreen({ navigation }) {
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [notice, setNotice] = useState('');
 
   const validate = () => {
     const e = {};
@@ -35,15 +44,31 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleRegister = async () => {
-    if (!validate()) return;
+    if (!validate() || loading) return;
     setLoading(true);
+    setNotice('');
     try {
-      await signUp(email.trim().toLowerCase(), password, name.trim());
-      Alert.alert('Account created', 'Check your email to confirm your account, then sign in.', [
-        { text: 'OK', onPress: () => navigation.navigate('Login') },
-      ]);
+      const result = await withTimeout(
+        signUp(email.trim().toLowerCase(), password, name.trim()),
+        'Account creation',
+      );
+
+      if (result?.session) {
+        setNotice('Account created. Setting up your profile...');
+        return;
+      }
+
+      const message = 'Account created. Check your email to confirm it, then sign in.';
+      setNotice(message);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Account created', message, [{ text: 'OK', onPress: () => navigation.navigate('Login') }]);
+      } else {
+        setTimeout(() => navigation.navigate('Login'), 1200);
+      }
     } catch (err) {
-      Alert.alert('Registration failed', err.message);
+      const message = err.message || 'Could not create your account.';
+      setNotice(message);
+      if (Platform.OS !== 'web') Alert.alert('Registration failed', message);
     } finally {
       setLoading(false);
     }
@@ -63,7 +88,19 @@ export default function RegisterScreen({ navigation }) {
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.subtitle}>Join SmartSense and take control of your finances</Text>
 
-        <Input label="Full name" value={name} onChangeText={setName} placeholder="John Doe" error={errors.name} />
+        {!!notice && (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        )}
+
+        <Input
+          label="Full name"
+          value={name}
+          onChangeText={setName}
+          placeholder="John Doe"
+          error={errors.name}
+        />
         <Input
           label="Email"
           value={email}
@@ -102,5 +139,12 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 28, flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { color: COLORS.primary, fontSize: SIZES.base, ...FONTS.medium },
   title: { fontSize: SIZES.xxl, color: COLORS.textPrimary, ...FONTS.bold, marginBottom: 6 },
-  subtitle: { fontSize: SIZES.base, color: COLORS.textSecondary, marginBottom: 28 },
+  subtitle: { fontSize: SIZES.base, color: COLORS.textSecondary, marginBottom: 18 },
+  notice: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: SIZES.radiusSm,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noticeText: { color: COLORS.primaryDark, fontSize: SIZES.sm, lineHeight: 18 },
 });

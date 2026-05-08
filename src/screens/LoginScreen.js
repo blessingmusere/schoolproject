@@ -19,6 +19,7 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [notice, setNotice] = useState('');
 
   const validate = () => {
     const e = {};
@@ -30,12 +31,20 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
-    if (!validate()) return;
+    if (!validate() || loading) return;
     setLoading(true);
+    setNotice('');
     try {
-      await signIn(email.trim().toLowerCase(), password);
+      await Promise.race([
+        signIn(email.trim().toLowerCase(), password),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Sign in is taking too long. Check your connection and try again.')), 20000),
+        ),
+      ]);
     } catch (err) {
-      Alert.alert('Login failed', err.message || 'Invalid email or password.');
+      const message = err.message || 'Invalid email or password.';
+      setNotice(message);
+      if (Platform.OS !== 'web') Alert.alert('Login failed', message);
     } finally {
       setLoading(false);
     }
@@ -56,6 +65,12 @@ export default function LoginScreen({ navigation }) {
         </View>
 
         <View style={styles.form}>
+          {!!notice && (
+            <View style={styles.notice}>
+              <Text style={styles.noticeText}>{notice}</Text>
+            </View>
+          )}
+
           <Input
             label="Email"
             value={email}
@@ -103,6 +118,13 @@ const styles = StyleSheet.create({
   logoText: { fontSize: SIZES.xxl, color: COLORS.primary, ...FONTS.bold },
   tagline: { fontSize: SIZES.base, color: COLORS.textSecondary, marginTop: 4 },
   form: { width: '100%' },
+  notice: {
+    backgroundColor: COLORS.dangerLight,
+    borderRadius: SIZES.radiusSm,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noticeText: { color: COLORS.danger, fontSize: SIZES.sm, lineHeight: 18 },
   linkWrap: { alignItems: 'center', marginTop: 20 },
   linkText: { fontSize: SIZES.base, color: COLORS.textSecondary },
   link: { color: COLORS.primary, ...FONTS.semibold },

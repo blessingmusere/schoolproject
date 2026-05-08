@@ -26,7 +26,10 @@ export const AppProvider = ({ children }) => {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) loadUserData(session.user.id);
+      if (session) {
+        setLoading(true);
+        loadUserData(session.user.id);
+      }
       else {
         setProfile(null);
         setExpenses([]);
@@ -65,6 +68,10 @@ export const AppProvider = ({ children }) => {
     const prof = await getProfile(session.user.id);
     setProfile(prof);
     return prof;
+  };
+
+  const completeProfile = (nextProfile) => {
+    setProfile(nextProfile);
   };
 
   const getMonthExpenses = () => {
@@ -110,6 +117,7 @@ export const AppProvider = ({ children }) => {
         loading,
         refreshExpenses,
         refreshProfile,
+        completeProfile,
         getMonthExpenses,
         getTotalSpent,
         getBalance,

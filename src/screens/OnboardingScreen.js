@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Alert,
-} from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { saveProfile } from '../services/supabase';
 import { scheduleDailyReminder } from '../services/notifications';
 import { useApp } from '../context/AppContext';
 import { Button, Input, Chip, ProgressBar } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
-import { CURRENCIES } from '../constants/finance';
+import { CURRENCIES, EXPENSE_CATEGORIES, addUniqueValue, normalizeListValue } from '../constants/finance';
 
-const STEPS = [
+const BASE_STEPS = [
   {
     key: 'income',
     title: 'What is your monthly income?',
@@ -20,16 +18,14 @@ const STEPS = [
   {
     key: 'currency',
     title: 'Which currency do you use?',
-    subtitle: 'SmartSense will format your dashboard and insights with this currency.',
+    subtitle: 'Pick one or add your own currency code.',
     type: 'single-chip',
-    options: CURRENCIES,
   },
   {
     key: 'categories',
     title: 'Main expense categories',
-    subtitle: 'Select all that apply to your spending.',
+    subtitle: 'Select your spending categories or add your own.',
     type: 'multi-chip',
-    options: ['Transport', 'Food', 'Rent', 'Airtime/Data', 'Shopping', 'Entertainment', 'Health', 'Other'],
   },
   {
     key: 'goal',
@@ -62,14 +58,30 @@ const STEPS = [
 ];
 
 export default function OnboardingScreen() {
-  const { session, refreshProfile } = useApp();
+  const { session, refreshProfile, completeProfile } = useApp();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [inputValue, setInputValue] = useState('');
+  const [customValue, setCustomValue] = useState('');
+  const [currencyOptions, setCurrencyOptions] = useState(CURRENCIES);
+  const [categoryOptions, setCategoryOptions] = useState(
+    EXPENSE_CATEGORIES.map((category) => category.label),
+  );
   const [loading, setLoading] = useState(false);
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const steps = useMemo(
+    () =>
+      BASE_STEPS.map((item) => {
+        if (item.key === 'currency') return { ...item, options: currencyOptions };
+        if (item.key === 'categories') return { ...item, options: categoryOptions };
+        return item;
+      }),
+    [currencyOptions, categoryOptions],
+  );
+
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
+  const selectedCurrency = answers.currency?.[0] || 'USD';
 
   const toggleChip = (val) => {
     const key = current.key;
@@ -83,10 +95,37 @@ export default function OnboardingScreen() {
     }
   };
 
+  const addCustomOption = () => {
+    const normalized =
+      current.key === 'currency'
+        ? normalizeListValue(customValue).toUpperCase()
+        : normalizeListValue(customValue);
+    if (!normalized) return;
+
+    if (current.key === 'currency') {
+      setCurrencyOptions((prev) => addUniqueValue(prev, normalized));
+      setAnswers({ ...answers, currency: [normalized] });
+    }
+
+    if (current.key === 'categories') {
+      setCategoryOptions((prev) => addUniqueValue(prev, normalized));
+      setAnswers((prev) => ({
+        ...prev,
+        categories: addUniqueValue(prev.categories || [], normalized),
+      }));
+    }
+
+    setCustomValue('');
+  };
+
   const isSelected = (val) => (answers[current.key] || []).includes(val);
 
   const canProceed = () => {
-    if (current.type === 'number') return inputValue && parseFloat(inputValue) > 0;
+    if (current.type === 'number') {
+      const value = Number.parseFloat(inputValue);
+      if (current.key === 'income') return value > 0;
+      return value >= 0;
+    }
     return (answers[current.key] || []).length > 0;
   };
 
@@ -96,9 +135,9 @@ export default function OnboardingScreen() {
       return;
     }
 
-    let newAnswers = { ...answers };
+    const newAnswers = { ...answers };
     if (current.type === 'number') {
-      newAnswers[current.key] = parseFloat(inputValue);
+      newAnswers[current.key] = Number.parseFloat(inputValue);
       setInputValue('');
     }
 
@@ -106,6 +145,7 @@ export default function OnboardingScreen() {
       setLoading(true);
       try {
         const profile = {
+          user_id: session.user.id,
           income: newAnswers.income,
           currency: newAnswers.currency?.[0] || 'USD',
           categories: newAnswers.categories,
@@ -114,12 +154,16 @@ export default function OnboardingScreen() {
           budget_limit: Math.max(0, newAnswers.income - newAnswers.monthlySavingsTarget),
           weaknesses: newAnswers.weaknesses,
           reminder_time: newAnswers.reminderTime?.[0],
+          updated_at: new Date().toISOString(),
         };
         await saveProfile(session.user.id, profile);
-        await scheduleDailyReminder(profile.reminder_time).catch((error) => {
+        completeProfile(profile);
+        scheduleDailyReminder(profile.reminder_time).catch((error) => {
           console.warn('Reminder scheduling skipped:', error?.message || error);
         });
-        await refreshProfile();
+        refreshProfile().catch((error) => {
+          console.warn('Profile refresh skipped:', error?.message || error);
+        });
       } catch (err) {
         Alert.alert('Error', err.message);
       } finally {
@@ -127,16 +171,22 @@ export default function OnboardingScreen() {
       }
     } else {
       setAnswers(newAnswers);
+      setCustomValue('');
       setStep(step + 1);
     }
   };
 
-  const pct = Math.round(((step) / STEPS.length) * 100);
+  const pct = Math.round((step / steps.length) * 100);
+  const numberLabel = current.key === 'income' || current.key === 'monthlySavingsTarget'
+    ? `Amount (${selectedCurrency})`
+    : 'Amount';
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.stepLabel}>Step {step + 1} of {STEPS.length}</Text>
+        <Text style={styles.stepLabel}>
+          Step {step + 1} of {steps.length}
+        </Text>
         <ProgressBar pct={pct} />
       </View>
 
@@ -146,7 +196,7 @@ export default function OnboardingScreen() {
 
         {current.type === 'number' && (
           <Input
-            label="Amount"
+            label={numberLabel}
             value={inputValue}
             onChangeText={setInputValue}
             placeholder={current.placeholder}
@@ -155,16 +205,32 @@ export default function OnboardingScreen() {
         )}
 
         {(current.type === 'single-chip' || current.type === 'multi-chip') && (
-          <View style={styles.chipWrap}>
-            {current.options.map((opt) => (
-              <Chip
-                key={opt}
-                label={opt}
-                selected={isSelected(opt)}
-                onPress={() => toggleChip(opt)}
-              />
-            ))}
-          </View>
+          <>
+            <View style={styles.chipWrap}>
+              {current.options.map((opt) => (
+                <Chip key={opt} label={opt} selected={isSelected(opt)} onPress={() => toggleChip(opt)} />
+              ))}
+            </View>
+
+            {(current.key === 'currency' || current.key === 'categories') && (
+              <View style={styles.customBox}>
+                <Input
+                  label={current.key === 'currency' ? 'Add currency code' : 'Add custom category'}
+                  value={customValue}
+                  onChangeText={setCustomValue}
+                  placeholder={current.key === 'currency' ? 'e.g. MZN' : 'e.g. School fees'}
+                  autoCapitalize={current.key === 'currency' ? 'characters' : 'sentences'}
+                  style={{ marginBottom: 10 }}
+                />
+                <Button
+                  title={current.key === 'currency' ? 'Add currency' : 'Add category'}
+                  variant="secondary"
+                  onPress={addCustomOption}
+                  disabled={!customValue.trim()}
+                />
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -173,15 +239,14 @@ export default function OnboardingScreen() {
           <Button
             title="Back"
             variant="secondary"
-            onPress={() => setStep(step - 1)}
+            onPress={() => {
+              setCustomValue('');
+              setStep(step - 1);
+            }}
             style={{ marginBottom: 10 }}
           />
         )}
-        <Button
-          title={isLast ? 'Get started' : 'Continue'}
-          onPress={handleNext}
-          loading={loading}
-        />
+        <Button title={isLast ? 'Get started' : 'Continue'} onPress={handleNext} loading={loading} />
       </View>
     </View>
   );
@@ -195,5 +260,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, color: COLORS.textPrimary, ...FONTS.bold, marginBottom: 8 },
   subtitle: { fontSize: SIZES.base, color: COLORS.textSecondary, marginBottom: 28, lineHeight: 22 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  customBox: {
+    marginTop: 18,
+    padding: 14,
+    borderRadius: SIZES.radius,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
   footer: { padding: 24, paddingBottom: 36 },
 });

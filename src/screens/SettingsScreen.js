@@ -6,7 +6,7 @@ import { scheduleDailyReminder, cancelAllReminders } from '../services/notificat
 import { useApp } from '../context/AppContext';
 import { Button, Card, Chip, Input, SectionTitle } from '../components/UI';
 import { COLORS, FONTS, SIZES } from '../constants/theme';
-import { CURRENCIES, EXPENSE_CATEGORIES } from '../constants/finance';
+import { CURRENCIES, EXPENSE_CATEGORIES, addUniqueValue, normalizeListValue } from '../constants/finance';
 
 const REMINDER_TIMES = ['Morning (8am)', 'Midday (12pm)', 'Evening (6pm)', 'Night (9pm)'];
 const GOALS = ['Save money', 'Reduce spending', 'Buy something specific', 'Build emergency fund', 'Pay off debt'];
@@ -22,6 +22,17 @@ export default function SettingsScreen() {
     reminder_time: profile?.reminder_time || 'Evening (6pm)',
     categories: profile?.categories || EXPENSE_CATEGORIES.map((category) => category.label),
   });
+  const [currencyOptions, setCurrencyOptions] = useState(
+    addUniqueValue(CURRENCIES, profile?.currency || 'USD'),
+  );
+  const [customCurrency, setCustomCurrency] = useState('');
+  const [categoryOptions, setCategoryOptions] = useState([
+    ...new Set([
+      ...EXPENSE_CATEGORIES.map((category) => category.label),
+      ...(profile?.categories || []),
+    ]),
+  ]);
+  const [customCategory, setCustomCategory] = useState('');
   const [saving, setSaving] = useState(false);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -36,6 +47,25 @@ export default function SettingsScreen() {
           : [...prev.categories, category],
       };
     });
+  };
+
+  const addCurrency = () => {
+    const normalized = normalizeListValue(customCurrency).toUpperCase();
+    if (!normalized) return;
+    setCurrencyOptions((prev) => addUniqueValue(prev, normalized));
+    setField('currency', normalized);
+    setCustomCurrency('');
+  };
+
+  const addCategory = () => {
+    const normalized = normalizeListValue(customCategory);
+    if (!normalized) return;
+    setCategoryOptions((prev) => addUniqueValue(prev, normalized));
+    setForm((prev) => ({
+      ...prev,
+      categories: addUniqueValue(prev.categories, normalized),
+    }));
+    setCustomCategory('');
   };
 
   const handleSave = async () => {
@@ -111,7 +141,7 @@ export default function SettingsScreen() {
 
       <SectionTitle>Currency</SectionTitle>
       <View style={styles.wrap}>
-        {CURRENCIES.map((currency) => (
+        {currencyOptions.map((currency) => (
           <Chip
             key={currency}
             label={currency}
@@ -120,6 +150,22 @@ export default function SettingsScreen() {
           />
         ))}
       </View>
+      <Card>
+        <Input
+          label="Add currency code"
+          value={customCurrency}
+          onChangeText={setCustomCurrency}
+          placeholder="e.g. MZN"
+          autoCapitalize="characters"
+          style={{ marginBottom: 10 }}
+        />
+        <Button
+          title="Add currency"
+          variant="secondary"
+          onPress={addCurrency}
+          disabled={!customCurrency.trim()}
+        />
+      </Card>
 
       <SectionTitle>Goal</SectionTitle>
       <View style={styles.wrap}>
@@ -130,15 +176,30 @@ export default function SettingsScreen() {
 
       <SectionTitle>Categories</SectionTitle>
       <View style={styles.wrap}>
-        {EXPENSE_CATEGORIES.map((category) => (
+        {categoryOptions.map((category) => (
           <Chip
-            key={category.label}
-            label={category.label}
-            selected={form.categories.includes(category.label)}
-            onPress={() => toggleCategory(category.label)}
+            key={category}
+            label={category}
+            selected={form.categories.includes(category)}
+            onPress={() => toggleCategory(category)}
           />
         ))}
       </View>
+      <Card>
+        <Input
+          label="Add custom category"
+          value={customCategory}
+          onChangeText={setCustomCategory}
+          placeholder="e.g. School fees"
+          style={{ marginBottom: 10 }}
+        />
+        <Button
+          title="Add category"
+          variant="secondary"
+          onPress={addCategory}
+          disabled={!customCategory.trim()}
+        />
+      </Card>
 
       <SectionTitle>Reminder</SectionTitle>
       <View style={styles.wrap}>
