@@ -1,21 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { buildFinancialContext, sendChatMessage } from '../services/gemini';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
 
 const QUICK_QUESTIONS = [
-  'Can I afford to save $200 this month?',
+  'Can I afford my savings target this month?',
   'Where am I overspending?',
-  'How do I cut my food budget?',
+  'What daily spending limit should I follow?',
   'Give me a weekly spending plan',
 ];
 
 export default function ChatScreen() {
-  const { session, profile, expenses } = useApp();
+  const { session, profile, expenses, formatMoney } = useApp();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,13 +34,13 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (messages.length === 0) {
-      const income = parseFloat(profile?.income || 0);
+      const income = Number.parseFloat(profile?.income || 0);
       const goal = profile?.goal || 'manage your finances';
       setMessages([
         {
           id: 'intro',
           role: 'ai',
-          text: `Hi ${name}! I'm your SmartSense advisor. I know your income is $${Math.round(income)}/month and your goal is to ${goal.toLowerCase()}. Ask me anything!`,
+          text: `Hi ${name}. I know your income is ${formatMoney(income)} per month and your goal is to ${goal.toLowerCase()}. Ask me anything about your budget.`,
         },
       ]);
     }
@@ -44,7 +52,7 @@ export default function ChatScreen() {
 
   const send = async (text) => {
     const msg = text || input.trim();
-    if (!msg) return;
+    if (!msg || loading) return;
     setInput('');
 
     const userMsg = { id: Date.now().toString(), role: 'user', text: msg };
@@ -54,15 +62,25 @@ export default function ChatScreen() {
 
     try {
       const ctx = buildFinancialContext(session?.user, profile, expenses);
-      const reply = await sendChatMessage(ctx, historyRef.current, msg);
+      const reply = await sendChatMessage(ctx, historyRef.current, msg, session?.access_token);
       historyRef.current = [
         ...historyRef.current,
         { role: 'user', content: msg },
         { role: 'assistant', content: reply },
       ].slice(-16);
-      setMessages((prev) => [...prev, { id: Date.now().toString() + 'ai', role: 'ai', text: reply }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `${Date.now()}ai`, role: 'ai', text: reply },
+      ]);
     } catch {
-      setMessages((prev) => [...prev, { id: Date.now().toString() + 'err', role: 'ai', text: "Sorry, I couldn't connect. Check your API key and internet connection." }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}err`,
+          role: 'ai',
+          text: 'I could not connect to the advisor service. Check your AI proxy or local API key.',
+        },
+      ]);
     } finally {
       setLoading(false);
       scrollToBottom();
@@ -87,11 +105,11 @@ export default function ChatScreen() {
     >
       <View style={styles.header}>
         <View style={styles.aiAvatar}>
-          <Text style={{ fontSize: 18 }}>🤖</Text>
+          <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} />
         </View>
         <View>
           <Text style={styles.aiName}>SmartSense Advisor</Text>
-          <Text style={styles.aiSub}>Powered by Gemini 2.5 Flash</Text>
+          <Text style={styles.aiSub}>Personalized from your spending data</Text>
         </View>
       </View>
 
@@ -113,9 +131,14 @@ export default function ChatScreen() {
 
       {messages.length === 1 && (
         <View style={styles.quickWrap}>
-          {QUICK_QUESTIONS.map((q) => (
-            <TouchableOpacity key={q} style={styles.quickBtn} onPress={() => send(q)} activeOpacity={0.75}>
-              <Text style={styles.quickText}>{q}</Text>
+          {QUICK_QUESTIONS.map((question) => (
+            <TouchableOpacity
+              key={question}
+              style={styles.quickBtn}
+              onPress={() => send(question)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.quickText}>{question}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -137,7 +160,7 @@ export default function ChatScreen() {
           onPress={() => send()}
           disabled={!input.trim() || loading}
         >
-          <Text style={styles.sendText}>↑</Text>
+          <Ionicons name="arrow-up" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -147,13 +170,22 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 16, paddingTop: 20, borderBottomWidth: 0.5, borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    paddingTop: 20,
+    borderBottomWidth: 0.5,
+    borderBottomColor: COLORS.border,
     backgroundColor: COLORS.white,
   },
   aiAvatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   aiName: { fontSize: SIZES.base, color: COLORS.textPrimary, ...FONTS.semibold },
   aiSub: { fontSize: SIZES.xs, color: COLORS.textSecondary },
@@ -161,14 +193,19 @@ const styles = StyleSheet.create({
   bubbleWrap: { marginBottom: 10 },
   bubbleWrapUser: { alignItems: 'flex-end' },
   bubble: {
-    maxWidth: '80%', padding: 12,
-    borderRadius: 16, borderBottomLeftRadius: 4,
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
     backgroundColor: COLORS.white,
-    borderWidth: 0.5, borderColor: COLORS.border,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
   },
   bubbleUser: {
-    backgroundColor: COLORS.primary, borderColor: COLORS.primary,
-    borderBottomLeftRadius: 16, borderBottomRightRadius: 4,
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 4,
   },
   bubbleText: { fontSize: SIZES.base, color: COLORS.textPrimary, lineHeight: 22 },
   bubbleTextUser: { color: COLORS.white },
@@ -176,25 +213,42 @@ const styles = StyleSheet.create({
   typingText: { fontSize: SIZES.sm, color: COLORS.textSecondary },
   quickWrap: { paddingHorizontal: 16, paddingBottom: 8 },
   quickBtn: {
-    backgroundColor: COLORS.white, borderWidth: 0.5, borderColor: COLORS.border,
-    borderRadius: SIZES.radius, padding: 10, marginBottom: 8,
+    backgroundColor: COLORS.white,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    borderRadius: SIZES.radius,
+    padding: 10,
+    marginBottom: 8,
   },
   quickText: { fontSize: SIZES.sm, color: COLORS.primary },
   inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    padding: 12, borderTopWidth: 0.5, borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    padding: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: COLORS.border,
     backgroundColor: COLORS.white,
   },
   input: {
-    flex: 1, minHeight: 42, maxHeight: 100,
-    backgroundColor: COLORS.background, borderRadius: SIZES.radius,
-    borderWidth: 0.5, borderColor: COLORS.border,
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: SIZES.base, color: COLORS.textPrimary,
+    flex: 1,
+    minHeight: 42,
+    maxHeight: 100,
+    backgroundColor: COLORS.background,
+    borderRadius: SIZES.radius,
+    borderWidth: 0.5,
+    borderColor: COLORS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: SIZES.base,
+    color: COLORS.textPrimary,
   },
   sendBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sendText: { color: COLORS.white, fontSize: 18, ...FONTS.bold },
 });

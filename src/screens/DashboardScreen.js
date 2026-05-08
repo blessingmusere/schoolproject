@@ -1,25 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, RefreshControl,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useApp } from '../context/AppContext';
 import { buildFinancialContext, getDashboardInsight } from '../services/gemini';
 import { Card, MetricCard, InsightCard, ProgressBar, SectionTitle } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
 
-const fmt = (n) => '$' + Math.round(n).toLocaleString();
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const getExpenseDate = (expense) => new Date(expense.spent_at || expense.created_at);
 
 export default function DashboardScreen() {
-  const { session, profile, expenses, refreshExpenses, getMonthExpenses, getTotalSpent, getBalance, getCategoryTotals } = useApp();
+  const { session, profile, expenses, refreshExpenses, getTotalSpent, getBalance, formatMoney } = useApp();
   const [insight, setInsight] = useState('Loading your personalized insight...');
   const [insightLoading, setInsightLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const income = parseFloat(profile?.income || 0);
+  const income = Number.parseFloat(profile?.income || 0);
   const spent = getTotalSpent();
   const balance = getBalance();
-  const goalPct = income > 0 ? Math.round((Math.max(0, balance) / income) * 100) : 0;
+  const savingsTarget = Number.parseFloat(profile?.monthly_savings_target || 0);
+  const budgetLimit = Number.parseFloat(profile?.budget_limit || 0);
+  const goalPct =
+    savingsTarget > 0
+      ? Math.round((Math.max(0, balance) / savingsTarget) * 100)
+      : income > 0
+        ? Math.round((Math.max(0, balance) / income) * 100)
+        : 0;
+  const budgetPct = budgetLimit > 0 ? Math.round((spent / budgetLimit) * 100) : 0;
 
   const name = session?.user?.user_metadata?.full_name || 'there';
   const firstName = name.split(' ')[0];
@@ -35,7 +41,7 @@ export default function DashboardScreen() {
     setInsightLoading(true);
     try {
       const ctx = buildFinancialContext(session?.user, profile, expenses);
-      const text = await getDashboardInsight(ctx);
+      const text = await getDashboardInsight(ctx, session?.access_token);
       setInsight(text);
     } catch {
       setInsight('Keep tracking your expenses to unlock personalized insights.');
@@ -51,95 +57,119 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  // Weekly spending bars
   const weeklyTotals = Array(7).fill(0);
   const now = new Date();
   const todayIdx = now.getDay() === 0 ? 6 : now.getDay() - 1;
-  expenses.forEach((e) => {
-    const d = new Date(e.created_at);
-    const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
-    if (diff < 7) {
+  expenses.forEach((expense) => {
+    const date = getExpenseDate(expense);
+    const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    if (diff >= 0 && diff < 7) {
       const idx = (todayIdx - (6 - diff) + 7) % 7;
-      weeklyTotals[idx] += parseFloat(e.amount);
+      weeklyTotals[idx] += Number.parseFloat(expense.amount || 0);
     }
   });
   const maxWeekly = Math.max(...weeklyTotals, 1);
-
-  // Recent expenses
   const recent = [...expenses].slice(0, 5);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+      }
     >
-      {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>{greeting}, {firstName}</Text>
-          <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+          <Text style={styles.greeting}>
+            {greeting}, {firstName}
+          </Text>
+          <Text style={styles.date}>
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </Text>
         </View>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{firstName[0]?.toUpperCase()}</Text>
         </View>
       </View>
 
-      {/* Balance card */}
       <Card style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>Balance this month</Text>
-        <Text style={[styles.balanceValue, balance < 0 && { color: COLORS.danger }]}>{fmt(balance)}</Text>
+        <Text style={[styles.balanceValue, balance < 0 && { color: COLORS.danger }]}>
+          {formatMoney(balance)}
+        </Text>
         <View style={{ marginTop: 12 }}>
           <View style={styles.goalRow}>
-            <Text style={styles.goalLabel}>Savings goal progress</Text>
+            <Text style={styles.goalLabel}>
+              {savingsTarget > 0 ? 'Savings target progress' : 'Savings progress'}
+            </Text>
             <Text style={styles.goalPct}>{goalPct}%</Text>
           </View>
           <ProgressBar pct={goalPct} />
         </View>
       </Card>
 
-      {/* Metrics */}
       <View style={styles.metricRow}>
-        <MetricCard label="Income" value={fmt(income)} color={COLORS.success} style={{ marginRight: 8 }} />
-        <MetricCard label="Spent" value={fmt(spent)} color={COLORS.danger} />
+        <MetricCard label="Income" value={formatMoney(income)} color={COLORS.success} style={{ marginRight: 8 }} />
+        <MetricCard label="Spent" value={formatMoney(spent)} color={COLORS.danger} />
       </View>
 
-      {/* AI Insight */}
+      {budgetLimit > 0 && (
+        <Card>
+          <View style={styles.goalRow}>
+            <Text style={styles.budgetLabel}>Monthly spending limit</Text>
+            <Text style={[styles.budgetPct, budgetPct > 90 && { color: COLORS.danger }]}>
+              {budgetPct}%
+            </Text>
+          </View>
+          <ProgressBar pct={budgetPct} color={budgetPct > 90 ? COLORS.danger : COLORS.warning} />
+          <Text style={styles.budgetHint}>
+            {formatMoney(Math.max(0, budgetLimit - spent))} left before your limit.
+          </Text>
+        </Card>
+      )}
+
       <InsightCard text={insight} loading={insightLoading} />
 
-      {/* Weekly chart */}
       <SectionTitle>Weekly spending</SectionTitle>
       <Card>
         <View style={styles.bars}>
-          {weeklyTotals.map((v, i) => (
-            <View key={i} style={styles.barCol}>
-              <View style={[
-                styles.bar,
-                { height: Math.max(4, Math.round((v / maxWeekly) * 72)) },
-                i === todayIdx && styles.barToday,
-              ]} />
-              <Text style={[styles.barLabel, i === todayIdx && styles.barLabelToday]}>
-                {DAYS[i]}
+          {weeklyTotals.map((value, index) => (
+            <View key={DAYS[index]} style={styles.barCol}>
+              <View
+                style={[
+                  styles.bar,
+                  { height: Math.max(4, Math.round((value / maxWeekly) * 72)) },
+                  index === todayIdx && styles.barToday,
+                ]}
+              />
+              <Text style={[styles.barLabel, index === todayIdx && styles.barLabelToday]}>
+                {DAYS[index]}
               </Text>
             </View>
           ))}
         </View>
       </Card>
 
-      {/* Recent expenses */}
       <SectionTitle>Recent expenses</SectionTitle>
       <Card>
         {recent.length === 0 ? (
-          <Text style={styles.empty}>No expenses yet. Add your first one!</Text>
+          <Text style={styles.empty}>No expenses yet. Add your first one.</Text>
         ) : (
-          recent.map((e, idx) => (
-            <View key={e.id} style={[styles.expRow, idx < recent.length - 1 && styles.expBorder]}>
+          recent.map((expense, index) => (
+            <View key={expense.id} style={[styles.expRow, index < recent.length - 1 && styles.expBorder]}>
               <View style={styles.expCatDot} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.expName}>{e.note || e.category}</Text>
-                <Text style={styles.expCat}>{e.category} · {new Date(e.created_at).toLocaleDateString()}</Text>
+                <Text style={styles.expName}>{expense.merchant || expense.note || expense.category}</Text>
+                <Text style={styles.expCat}>
+                  {expense.category} · {getExpenseDate(expense).toLocaleDateString()}
+                </Text>
               </View>
-              <Text style={styles.expAmt}>-{fmt(e.amount)}</Text>
+              <Text style={styles.expAmt}>-{formatMoney(expense.amount)}</Text>
             </View>
           ))
         )}
@@ -155,9 +185,12 @@ const styles = StyleSheet.create({
   greeting: { fontSize: SIZES.lg, color: COLORS.textPrimary, ...FONTS.bold },
   date: { fontSize: SIZES.sm, color: COLORS.textSecondary, marginTop: 2 },
   avatar: {
-    width: 42, height: 42, borderRadius: 21,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: COLORS.primaryLight,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarText: { fontSize: SIZES.base, color: COLORS.primary, ...FONTS.semibold },
   balanceCard: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
@@ -166,6 +199,9 @@ const styles = StyleSheet.create({
   goalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   goalLabel: { fontSize: SIZES.xs, color: 'rgba(255,255,255,0.75)' },
   goalPct: { fontSize: SIZES.xs, color: COLORS.white, ...FONTS.semibold },
+  budgetLabel: { fontSize: SIZES.sm, color: COLORS.textSecondary, ...FONTS.medium },
+  budgetPct: { fontSize: SIZES.sm, color: COLORS.warning, ...FONTS.semibold },
+  budgetHint: { fontSize: SIZES.xs, color: COLORS.textSecondary, marginTop: 8 },
   metricRow: { flexDirection: 'row', marginBottom: 14 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', height: 90 },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: 90 },
@@ -176,8 +212,11 @@ const styles = StyleSheet.create({
   expRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   expBorder: { borderBottomWidth: 0.5, borderBottomColor: COLORS.borderLight },
   expCatDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: COLORS.primary, marginRight: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    marginRight: 12,
   },
   expName: { fontSize: SIZES.base, color: COLORS.textPrimary },
   expCat: { fontSize: SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },

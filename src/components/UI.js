@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { COLORS, SIZES, SHADOWS, FONTS } from '../constants/theme';
 
-// ── Button ────────────────────────────────────────────────────
 export const Button = ({ title, onPress, variant = 'primary', loading, style, disabled }) => {
   const isPrimary = variant === 'primary';
   return (
@@ -33,7 +32,6 @@ export const Button = ({ title, onPress, variant = 'primary', loading, style, di
   );
 };
 
-// ── Input ─────────────────────────────────────────────────────
 export const Input = ({ label, error, style, ...props }) => (
   <View style={[{ marginBottom: 16 }, style]}>
     {label && <Text style={styles.label}>{label}</Text>}
@@ -46,12 +44,10 @@ export const Input = ({ label, error, style, ...props }) => (
   </View>
 );
 
-// ── Card ──────────────────────────────────────────────────────
 export const Card = ({ children, style }) => (
   <View style={[styles.card, SHADOWS.small, style]}>{children}</View>
 );
 
-// ── MetricCard ────────────────────────────────────────────────
 export const MetricCard = ({ label, value, color, style }) => (
   <View style={[styles.metric, style]}>
     <Text style={styles.metricLabel}>{label}</Text>
@@ -59,7 +55,6 @@ export const MetricCard = ({ label, value, color, style }) => (
   </View>
 );
 
-// ── InsightCard ───────────────────────────────────────────────
 export const InsightCard = ({ text, loading }) => (
   <View style={styles.insightCard}>
     <Text style={styles.insightLabel}>AI Insight</Text>
@@ -71,14 +66,17 @@ export const InsightCard = ({ text, loading }) => (
   </View>
 );
 
-// ── ProgressBar ───────────────────────────────────────────────
 export const ProgressBar = ({ pct, color = COLORS.primary }) => (
   <View style={styles.progressWrap}>
-    <View style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: color }]} />
+    <View
+      style={[
+        styles.progressFill,
+        { width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: color },
+      ]}
+    />
   </View>
 );
 
-// ── Chip ──────────────────────────────────────────────────────
 export const Chip = ({ label, selected, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
@@ -89,10 +87,8 @@ export const Chip = ({ label, selected, onPress }) => (
   </TouchableOpacity>
 );
 
-// ── Divider ───────────────────────────────────────────────────
 export const Divider = ({ style }) => <View style={[styles.divider, style]} />;
 
-// ── SectionTitle ──────────────────────────────────────────────
 export const SectionTitle = ({ children, style }) => (
   <Text style={[styles.sectionTitle, style]}>{children}</Text>
 );

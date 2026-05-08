@@ -1,57 +1,117 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { addExpense } from '../services/supabase';
+import { Ionicons } from '@expo/vector-icons';
+import { addExpense, deleteExpense, updateExpense } from '../services/supabase';
 import { useApp } from '../context/AppContext';
 import { Button, Input, Card } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
+import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '../constants/finance';
 
-const CATEGORIES = [
-  { label: 'Food', icon: '🍔' },
-  { label: 'Transport', icon: '🚗' },
-  { label: 'Rent', icon: '🏠' },
-  { label: 'Airtime/Data', icon: '📱' },
-  { label: 'Shopping', icon: '🛍️' },
-  { label: 'Entertainment', icon: '🎬' },
-  { label: 'Health', icon: '💊' },
-  { label: 'Other', icon: '📌' },
-];
+const toDateInput = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+};
+
+const newForm = () => ({
+  amount: '',
+  category: 'Food',
+  merchant: '',
+  payment_method: 'Cash',
+  note: '',
+  spent_at: toDateInput(),
+});
 
 export default function AddExpenseScreen() {
-  const { session, refreshExpenses } = useApp();
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Food');
-  const [note, setNote] = useState('');
+  const { session, expenses, refreshExpenses, formatMoney } = useApp();
+  const [form, setForm] = useState(newForm());
+  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [amountError, setAmountError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState('');
 
-  const handleAdd = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
+  const setField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === 'amount') setAmountError('');
+  };
+
+  const resetForm = () => {
+    setForm(newForm());
+    setEditingId(null);
+    setAmountError('');
+  };
+
+  const handleEdit = (expense) => {
+    setEditingId(expense.id);
+    setForm({
+      amount: String(expense.amount || ''),
+      category: expense.category || 'Food',
+      merchant: expense.merchant || '',
+      payment_method: expense.payment_method || 'Cash',
+      note: expense.note || '',
+      spent_at: toDateInput(expense.spent_at || expense.created_at),
+    });
+  };
+
+  const handleSave = async () => {
+    if (!form.amount || Number.parseFloat(form.amount) <= 0) {
       setAmountError('Please enter a valid amount');
       return;
     }
-    setAmountError('');
+
     setLoading(true);
     try {
-      await addExpense(session.user.id, {
-        amount: parseFloat(amount),
-        category,
-        note: note.trim(),
-      });
+      const payload = {
+        ...form,
+        amount: Number.parseFloat(form.amount),
+        spent_at: form.spent_at,
+      };
+      if (editingId) {
+        await updateExpense(editingId, payload);
+        setSuccess('Expense updated successfully.');
+      } else {
+        await addExpense(session.user.id, payload);
+        setSuccess('Expense saved successfully.');
+      }
       await refreshExpenses();
-      setAmount('');
-      setNote('');
-      setCategory('Food');
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      resetForm();
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       Alert.alert('Error', err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleDelete = (expense) => {
+    Alert.alert('Delete expense?', 'This removes the expense from your records.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteExpense(expense.id);
+            await refreshExpenses();
+            if (editingId === expense.id) resetForm();
+          } catch (err) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const recent = expenses.slice(0, 8);
 
   return (
     <KeyboardAvoidingView
@@ -63,18 +123,25 @@ export default function AddExpenseScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Add expense</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>{editingId ? 'Edit expense' : 'Add expense'}</Text>
+          {editingId && (
+            <TouchableOpacity onPress={resetForm} style={styles.clearBtn}>
+              <Text style={styles.clearText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {success && (
+        {!!success && (
           <View style={styles.successBanner}>
-            <Text style={styles.successText}>✓ Expense saved successfully!</Text>
+            <Text style={styles.successText}>{success}</Text>
           </View>
         )}
 
         <Input
-          label="Amount ($)"
-          value={amount}
-          onChangeText={(v) => { setAmount(v); setAmountError(''); }}
+          label="Amount"
+          value={form.amount}
+          onChangeText={(value) => setField('amount', value)}
           placeholder="0.00"
           keyboardType="decimal-pad"
           error={amountError}
@@ -82,34 +149,101 @@ export default function AddExpenseScreen() {
 
         <Text style={styles.catLabel}>Category</Text>
         <View style={styles.catGrid}>
-          {CATEGORIES.map((c) => (
+          {EXPENSE_CATEGORIES.map((category) => (
             <TouchableOpacity
-              key={c.label}
-              style={[styles.catCard, category === c.label && styles.catCardSelected]}
-              onPress={() => setCategory(c.label)}
+              key={category.label}
+              style={[styles.catCard, form.category === category.label && styles.catCardSelected]}
+              onPress={() => setField('category', category.label)}
               activeOpacity={0.75}
             >
-              <Text style={styles.catIcon}>{c.icon}</Text>
-              <Text style={[styles.catText, category === c.label && styles.catTextSelected]}>
-                {c.label}
+              <Ionicons
+                name={category.icon}
+                size={22}
+                color={form.category === category.label ? COLORS.primary : COLORS.textSecondary}
+              />
+              <Text style={[styles.catText, form.category === category.label && styles.catTextSelected]}>
+                {category.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <Input
-          label="Note (optional)"
-          value={note}
-          onChangeText={setNote}
+          label="Merchant"
+          value={form.merchant}
+          onChangeText={(value) => setField('merchant', value)}
+          placeholder="Store, person, or service"
+          style={{ marginTop: 16 }}
+        />
+
+        <Input
+          label="Date"
+          value={form.spent_at}
+          onChangeText={(value) => setField('spent_at', value)}
+          placeholder="YYYY-MM-DD"
+        />
+
+        <Text style={styles.catLabel}>Payment method</Text>
+        <View style={styles.methodWrap}>
+          {PAYMENT_METHODS.map((method) => (
+            <TouchableOpacity
+              key={method}
+              style={[styles.methodChip, form.payment_method === method && styles.methodChipSelected]}
+              onPress={() => setField('payment_method', method)}
+            >
+              <Text
+                style={[
+                  styles.methodText,
+                  form.payment_method === method && styles.methodTextSelected,
+                ]}
+              >
+                {method}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Input
+          label="Note"
+          value={form.note}
+          onChangeText={(value) => setField('note', value)}
           placeholder="What was this for?"
           style={{ marginTop: 16 }}
         />
 
-        <Button title="Save expense" onPress={handleAdd} loading={loading} style={{ marginTop: 8 }} />
+        <Button
+          title={editingId ? 'Update expense' : 'Save expense'}
+          onPress={handleSave}
+          loading={loading}
+          style={{ marginTop: 8 }}
+        />
 
-        <Card style={styles.tipCard}>
-          <Text style={styles.tipTitle}>💡 Tip</Text>
-          <Text style={styles.tipText}>Log expenses right after spending to keep your data accurate.</Text>
+        <Text style={[styles.title, styles.recentTitle]}>Recent expenses</Text>
+        <Card>
+          {recent.length === 0 ? (
+            <Text style={styles.empty}>No expenses yet.</Text>
+          ) : (
+            recent.map((expense, index) => (
+              <View
+                key={expense.id}
+                style={[styles.expRow, index < recent.length - 1 && styles.expBorder]}
+              >
+                <View style={styles.expInfo}>
+                  <Text style={styles.expName}>{expense.merchant || expense.note || expense.category}</Text>
+                  <Text style={styles.expMeta}>
+                    {expense.category} · {toDateInput(expense.spent_at || expense.created_at)}
+                  </Text>
+                </View>
+                <Text style={styles.expAmt}>{formatMoney(expense.amount)}</Text>
+                <TouchableOpacity onPress={() => handleEdit(expense)} style={styles.iconBtn}>
+                  <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDelete(expense)} style={styles.iconBtn}>
+                  <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </Card>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -119,7 +253,10 @@ export default function AddExpenseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: 20, paddingBottom: 40 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: SIZES.xl, color: COLORS.textPrimary, ...FONTS.bold, marginBottom: 20 },
+  clearBtn: { paddingHorizontal: 10, paddingVertical: 6 },
+  clearText: { color: COLORS.primary, ...FONTS.medium },
   successBanner: {
     backgroundColor: COLORS.successLight,
     borderRadius: SIZES.radiusSm,
@@ -144,10 +281,29 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     borderColor: COLORS.primary,
   },
-  catIcon: { fontSize: 22, marginBottom: 4 },
-  catText: { fontSize: 10, color: COLORS.textSecondary, textAlign: 'center' },
+  catText: { fontSize: 10, color: COLORS.textSecondary, textAlign: 'center', marginTop: 4 },
   catTextSelected: { color: COLORS.primary, ...FONTS.semibold },
-  tipCard: { marginTop: 20, backgroundColor: COLORS.warningLight, borderColor: COLORS.warningLight },
-  tipTitle: { fontSize: SIZES.sm, ...FONTS.semibold, color: COLORS.warning, marginBottom: 4 },
-  tipText: { fontSize: SIZES.sm, color: COLORS.textSecondary, lineHeight: 18 },
+  methodWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  methodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: SIZES.radiusFull,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  methodChipSelected: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+  methodText: { color: COLORS.textSecondary, fontSize: SIZES.sm },
+  methodTextSelected: { color: COLORS.primary, ...FONTS.medium },
+  recentTitle: { marginTop: 26, marginBottom: 12 },
+  expRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  expBorder: { borderBottomWidth: 0.5, borderBottomColor: COLORS.borderLight },
+  expInfo: { flex: 1, paddingRight: 8 },
+  expName: { fontSize: SIZES.base, color: COLORS.textPrimary },
+  expMeta: { fontSize: SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
+  expAmt: { fontSize: SIZES.base, color: COLORS.danger, ...FONTS.semibold, marginRight: 4 },
+  iconBtn: { padding: 8 },
+  empty: { fontSize: SIZES.base, color: COLORS.textSecondary, textAlign: 'center', paddingVertical: 10 },
 });

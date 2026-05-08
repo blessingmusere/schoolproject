@@ -7,6 +7,7 @@ import { scheduleDailyReminder } from '../services/notifications';
 import { useApp } from '../context/AppContext';
 import { Button, Input, Chip, ProgressBar } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
+import { CURRENCIES } from '../constants/finance';
 
 const STEPS = [
   {
@@ -15,6 +16,13 @@ const STEPS = [
     subtitle: 'This helps us calculate your saving rate and budget.',
     type: 'number',
     placeholder: 'e.g. 1500',
+  },
+  {
+    key: 'currency',
+    title: 'Which currency do you use?',
+    subtitle: 'SmartSense will format your dashboard and insights with this currency.',
+    type: 'single-chip',
+    options: CURRENCIES,
   },
   {
     key: 'categories',
@@ -29,6 +37,13 @@ const STEPS = [
     subtitle: 'Pick the one that matters most right now.',
     type: 'single-chip',
     options: ['Save money', 'Reduce spending', 'Buy something specific', 'Build emergency fund', 'Pay off debt'],
+  },
+  {
+    key: 'monthlySavingsTarget',
+    title: 'Monthly savings target',
+    subtitle: 'Set a realistic amount to protect before spending.',
+    type: 'number',
+    placeholder: 'e.g. 300',
   },
   {
     key: 'weaknesses',
@@ -92,8 +107,11 @@ export default function OnboardingScreen() {
       try {
         const profile = {
           income: newAnswers.income,
+          currency: newAnswers.currency?.[0] || 'USD',
           categories: newAnswers.categories,
           goal: newAnswers.goal?.[0],
+          monthly_savings_target: newAnswers.monthlySavingsTarget,
+          budget_limit: Math.max(0, newAnswers.income - newAnswers.monthlySavingsTarget),
           weaknesses: newAnswers.weaknesses,
           reminder_time: newAnswers.reminderTime?.[0],
         };
@@ -126,7 +144,7 @@ export default function OnboardingScreen() {
 
         {current.type === 'number' && (
           <Input
-            label="Amount ($)"
+            label="Amount"
             value={inputValue}
             onChangeText={setInputValue}
             placeholder={current.placeholder}

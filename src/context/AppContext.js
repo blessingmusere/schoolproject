@@ -3,13 +3,15 @@ import { supabase, isSupabaseConfigured, getProfile, getExpenses } from '../serv
 
 const AppContext = createContext(null);
 
+const getExpenseDate = (expense) => new Date(expense.spent_at || expense.created_at);
+const toNumber = (value) => Number.parseFloat(value || 0) || 0;
+
 export const AppProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Listen to auth state changes
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -37,10 +39,7 @@ export const AppProvider = ({ children }) => {
 
   const loadUserData = async (userId) => {
     try {
-      const [prof, exps] = await Promise.all([
-        getProfile(userId),
-        getExpenses(userId),
-      ]);
+      const [prof, exps] = await Promise.all([getProfile(userId), getExpenses(userId)]);
       setProfile(prof);
       setExpenses(exps);
     } catch (e) {
@@ -51,37 +50,51 @@ export const AppProvider = ({ children }) => {
   };
 
   const refreshExpenses = async () => {
-    if (!session) return;
+    if (!session) return [];
     const exps = await getExpenses(session.user.id);
     setExpenses(exps);
+    return exps;
   };
 
   const refreshProfile = async () => {
-    if (!session) return;
+    if (!session) return null;
     const prof = await getProfile(session.user.id);
     setProfile(prof);
+    return prof;
   };
 
-  // Computed helpers
   const getMonthExpenses = () => {
     const now = new Date();
-    return expenses.filter((e) => {
-      const d = new Date(e.created_at);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return expenses.filter((expense) => {
+      const date = getExpenseDate(expense);
+      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     });
   };
 
   const getTotalSpent = () =>
-    getMonthExpenses().reduce((sum, e) => sum + parseFloat(e.amount), 0);
+    getMonthExpenses().reduce((sum, expense) => sum + toNumber(expense.amount), 0);
 
-  const getBalance = () => parseFloat(profile?.income || 0) - getTotalSpent();
+  const getBalance = () => toNumber(profile?.income) - getTotalSpent();
 
   const getCategoryTotals = () => {
     const totals = {};
-    getMonthExpenses().forEach((e) => {
-      totals[e.category] = (totals[e.category] || 0) + parseFloat(e.amount);
+    getMonthExpenses().forEach((expense) => {
+      totals[expense.category] = (totals[expense.category] || 0) + toNumber(expense.amount);
     });
     return totals;
+  };
+
+  const formatMoney = (value) => {
+    const currency = profile?.currency || 'USD';
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: 0,
+      }).format(toNumber(value));
+    } catch {
+      return `${currency} ${Math.round(toNumber(value)).toLocaleString()}`;
+    }
   };
 
   return (
@@ -97,6 +110,7 @@ export const AppProvider = ({ children }) => {
         getTotalSpent,
         getBalance,
         getCategoryTotals,
+        formatMoney,
       }}
     >
       {children}

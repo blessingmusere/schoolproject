@@ -2,6 +2,7 @@ node_modules/
 .expo/
 dist/
 npm-debug.*
+.expo-dev-server.*.log
 *.jks
 *.p8
 *.p12
@@ -9,6 +10,7 @@ npm-debug.*
 *.mobileprovision
 *.orig.*
 web-build/
+smartsense-netlify-dist.zip
 .env
 .DS_Store
 android/

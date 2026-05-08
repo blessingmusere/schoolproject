@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView,
-  Platform, ScrollView, Alert,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { signIn } from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
@@ -27,7 +34,6 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await signIn(email.trim().toLowerCase(), password);
-      // Navigation handled by AppContext auth listener
     } catch (err) {
       Alert.alert('Login failed', err.message || 'Invalid email or password.');
     } finally {
@@ -43,7 +49,7 @@ export default function LoginScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <View style={styles.logoWrap}>
           <View style={styles.logoIcon}>
-            <Text style={styles.logoEmoji}>💡</Text>
+            <Ionicons name="analytics-outline" size={32} color={COLORS.primary} />
           </View>
           <Text style={styles.logoText}>SmartSense</Text>
           <Text style={styles.tagline}>Your personal financial advisor</Text>
@@ -63,20 +69,16 @@ export default function LoginScreen({ navigation }) {
             label="Password"
             value={password}
             onChangeText={setPassword}
-            placeholder="••••••••"
+            placeholder="Password"
             secureTextEntry
             error={errors.password}
           />
 
           <Button title="Sign in" onPress={handleLogin} loading={loading} />
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Register')}
-            style={styles.linkWrap}
-          >
+          <TouchableOpacity onPress={() => navigation.navigate('Register')} style={styles.linkWrap}>
             <Text style={styles.linkText}>
-              No account?{' '}
-              <Text style={styles.link}>Create one</Text>
+              No account? <Text style={styles.link}>Create one</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -98,7 +100,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 14,
   },
-  logoEmoji: { fontSize: 32 },
   logoText: { fontSize: SIZES.xxl, color: COLORS.primary, ...FONTS.bold },
   tagline: { fontSize: SIZES.base, color: COLORS.textSecondary, marginTop: 4 },
   form: { width: '100%' },

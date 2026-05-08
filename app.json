@@ -15,18 +15,16 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.smartsense"
+      "bundleIdentifier": "com.smartsense.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#6C63FF"
       },
-      "package": "com.yourname.smartsense",
+      "package": "com.smartsense.app",
       "permissions": [
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "SCHEDULE_EXACT_ALARM"
+        "RECEIVE_BOOT_COMPLETED"
       ]
     },
     "web": {

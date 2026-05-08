@@ -1,90 +1,122 @@
-// Google Gemini integration for SmartSense AI features
-
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+const AI_PROXY_URL = process.env.EXPO_PUBLIC_AI_PROXY_URL;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const SYSTEM_PROMPT = `You are SmartSense, a friendly and knowledgeable personal finance advisor.
-You give concise, practical, and personalized financial advice based on the user's real data.
-Keep responses short (2-4 sentences max unless asked for more).
-Be warm, direct, and specific — never generic.
-Use dollar amounts and percentages when relevant.
-Never give investment advice about specific stocks. Focus on budgeting, saving, and spending habits.`;
+Give concise, practical, personalized financial advice based on the user's real data.
+Prefer specific observations, simple budget actions, and behavioral tips.
+Keep responses short unless asked for more.
+Use the user's currency when relevant.
+Never recommend specific stocks, crypto tokens, or high-risk investments.`;
 
-/**
- * Build a financial context string from the user's data.
- */
+const getExpenseDate = (expense) => new Date(expense.spent_at || expense.created_at);
+const toNumber = (value) => Number.parseFloat(value || 0) || 0;
+
 export const buildFinancialContext = (user, profile, expenses) => {
   const now = new Date();
-  const monthExpenses = expenses.filter((e) => {
-    const d = new Date(e.created_at);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  const monthExpenses = expenses.filter((expense) => {
+    const date = getExpenseDate(expense);
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
   });
 
-  const totalSpent = monthExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-  const income = parseFloat(profile?.income || 0);
+  const last7Days = expenses.filter((expense) => {
+    const diff = Math.floor((now - getExpenseDate(expense)) / (1000 * 60 * 60 * 24));
+    return diff >= 0 && diff < 7;
+  });
+
+  const totalSpent = monthExpenses.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+  const weeklySpent = last7Days.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+  const income = toNumber(profile?.income);
   const balance = income - totalSpent;
+  const budgetLimit = toNumber(profile?.budget_limit);
+  const savingsTarget = toNumber(profile?.monthly_savings_target);
   const savingRate = income > 0 ? Math.round((balance / income) * 100) : 0;
 
   const categoryTotals = {};
-  monthExpenses.forEach((e) => {
-    categoryTotals[e.category] = (categoryTotals[e.category] || 0) + parseFloat(e.amount);
+  monthExpenses.forEach((expense) => {
+    categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + toNumber(expense.amount);
   });
-  const topCats = Object.entries(categoryTotals)
+  const topCategories = Object.entries(categoryTotals)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([cat, amt]) => `${cat}: $${Math.round(amt)}`)
+    .map(([category, amount]) => `${category}: ${Math.round(amount)}`)
+    .join(', ');
+
+  const recentExpenses = expenses
+    .slice(0, 8)
+    .map((expense) => {
+      const label = expense.merchant || expense.note || expense.category;
+      return `${label} (${expense.category}): ${Math.round(toNumber(expense.amount))}`;
+    })
     .join(', ');
 
   return `
 User: ${user?.user_metadata?.full_name || 'User'}
-Monthly income: $${Math.round(income)}
-Total spent this month: $${Math.round(totalSpent)}
-Remaining balance: $${Math.round(balance)}
+Currency: ${profile?.currency || 'USD'}
+Monthly income: ${Math.round(income)}
+Monthly spending limit: ${Math.round(budgetLimit)}
+Monthly savings target: ${Math.round(savingsTarget)}
+Total spent this month: ${Math.round(totalSpent)}
+Spent in last 7 days: ${Math.round(weeklySpent)}
+Remaining balance: ${Math.round(balance)}
 Saving rate: ${savingRate}%
-Spending by category: ${topCats || 'No expenses yet'}
+Spending by category: ${topCategories || 'No expenses yet'}
+Recent expenses: ${recentExpenses || 'No expenses yet'}
 Financial goal: ${profile?.goal || 'save money'}
 Weaknesses: ${(profile?.weaknesses || []).join(', ') || 'not specified'}
   `.trim();
 };
 
-/**
- * Get a single AI insight for the dashboard.
- */
-export const getDashboardInsight = async (financialContext) => {
-  const prompt = `${financialContext}\n\nWrite a single personalized 1-2 sentence financial insight or tip for this user's dashboard. Be specific and encouraging.`;
-  return await callGemini([{ role: 'user', content: prompt }]);
+export const getDashboardInsight = async (financialContext, accessToken) => {
+  const prompt = `${financialContext}\n\nWrite one personalized dashboard insight. Mention a concrete category, limit, or next action when possible.`;
+  return await callAdvisor([{ role: 'user', content: prompt }], SYSTEM_PROMPT, accessToken);
 };
 
-/**
- * Get an AI-generated weekly summary.
- */
-export const getWeeklySummary = async (financialContext) => {
-  const prompt = `${financialContext}\n\nWrite a friendly 3-4 sentence weekly financial summary for this user. Include specific observations about their spending and give 2 actionable tips. Be encouraging but honest.`;
-  return await callGemini([{ role: 'user', content: prompt }]);
+export const getWeeklySummary = async (financialContext, accessToken) => {
+  const prompt = `${financialContext}\n\nWrite a 3-4 sentence weekly financial summary with two actionable tips. Be encouraging but honest.`;
+  return await callAdvisor([{ role: 'user', content: prompt }], SYSTEM_PROMPT, accessToken);
 };
 
-/**
- * Send a chat message to the AI advisor.
- * @param {string} financialContext - User's financial data context
- * @param {Array} history - Previous messages [{role, content}]
- * @param {string} userMessage - Latest user message
- */
-export const sendChatMessage = async (financialContext, history, userMessage) => {
+export const sendChatMessage = async (financialContext, history, userMessage, accessToken) => {
   const systemWithContext = `${SYSTEM_PROMPT}\n\nUser's current financial data:\n${financialContext}`;
-  const messages = [
-    ...history.slice(-12), // keep last 12 messages to stay within token limits
-    { role: 'user', content: userMessage },
-  ];
-  return await callGemini(messages, systemWithContext);
+  const messages = [...history.slice(-12), { role: 'user', content: userMessage }];
+  return await callAdvisor(messages, systemWithContext, accessToken);
 };
 
-/**
- * Core Gemini API caller.
- */
-const callGemini = async (messages, systemOverride = SYSTEM_PROMPT) => {
+const callAdvisor = async (messages, systemOverride = SYSTEM_PROMPT, accessToken) => {
+  if (AI_PROXY_URL) {
+    return callProxy(messages, systemOverride, accessToken);
+  }
+
+  return callGeminiDirect(messages, systemOverride);
+};
+
+const callProxy = async (messages, systemInstruction, accessToken) => {
+  const headers = { 'Content-Type': 'application/json' };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  const response = await fetch(AI_PROXY_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ messages, systemInstruction }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.error || 'AI proxy error');
+  }
+
+  const data = await response.json();
+  if (!data.text) throw new Error('AI proxy returned an empty response.');
+  return data.text;
+};
+
+const callGeminiDirect = async (messages, systemOverride = SYSTEM_PROMPT) => {
   if (!GEMINI_API_KEY) {
-    throw new Error('Missing EXPO_PUBLIC_GEMINI_API_KEY. Add your Google AI Studio API key to .env.');
+    throw new Error(
+      'Missing AI configuration. Set EXPO_PUBLIC_AI_PROXY_URL for production or EXPO_PUBLIC_GEMINI_API_KEY for local development.',
+    );
   }
 
   try {
@@ -120,10 +152,7 @@ const callGemini = async (messages, systemOverride = SYSTEM_PROMPT) => {
       .join('')
       .trim();
 
-    if (!text) {
-      throw new Error('Gemini returned an empty response.');
-    }
-
+    if (!text) throw new Error('Gemini returned an empty response.');
     return text;
   } catch (error) {
     console.error('Gemini error:', error);

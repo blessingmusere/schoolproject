@@ -21,7 +21,6 @@ const TIME_MAP = {
 };
 
 export const scheduleDailyReminder = async (preferredTime = 'Evening (6pm)') => {
-  // Cancel existing reminders first
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   const granted = await requestPermissions();
@@ -32,7 +31,7 @@ export const scheduleDailyReminder = async (preferredTime = 'Evening (6pm)') => 
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'SmartSense',
-      body: "Time to log today's expenses. Stay on track! 💰",
+      body: "Time to log today's expenses. Stay on track.",
       sound: false,
     },
     trigger: {

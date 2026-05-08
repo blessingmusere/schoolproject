@@ -44,7 +44,12 @@ const requireSupabase = () => {
   return supabase;
 };
 
-// ── Auth helpers ──────────────────────────────────────────────
+const normalizeDate = (dateValue) => {
+  if (!dateValue) return new Date().toISOString();
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  return date.toISOString();
+};
 
 export const signUp = async (email, password, name) => {
   const client = requireSupabase();
@@ -67,6 +72,25 @@ export const signIn = async (email, password) => {
   return data;
 };
 
+export const signInWithGoogle = async () => {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: getAuthRedirectUrl(),
+    },
+  });
+  if (error) throw error;
+  return data;
+};
+
+export const signInAsGuest = async () => {
+  const client = requireSupabase();
+  const { data, error } = await client.auth.signInAnonymously();
+  if (error) throw error;
+  return data;
+};
+
 export const signOut = async () => {
   const client = requireSupabase();
   const { error } = await client.auth.signOut();
@@ -75,17 +99,20 @@ export const signOut = async () => {
 
 export const getSession = async () => {
   const client = requireSupabase();
-  const { data: { session } } = await client.auth.getSession();
+  const {
+    data: { session },
+  } = await client.auth.getSession();
   return session;
 };
 
-// ── Profile helpers ───────────────────────────────────────────
-
 export const saveProfile = async (userId, profile) => {
   const client = requireSupabase();
-  const { error } = await client
-    .from('profiles')
-    .upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() });
+  const { error } = await client.from('profiles').upsert({
+    user_id: userId,
+    currency: 'USD',
+    ...profile,
+    updated_at: new Date().toISOString(),
+  });
   if (error) throw error;
 };
 
@@ -100,13 +127,39 @@ export const getProfile = async (userId) => {
   return data;
 };
 
-// ── Expense helpers ───────────────────────────────────────────
-
 export const addExpense = async (userId, expense) => {
   const client = requireSupabase();
+  const payload = {
+    user_id: userId,
+    amount: Number(expense.amount),
+    category: expense.category,
+    note: expense.note || null,
+    merchant: expense.merchant || null,
+    payment_method: expense.payment_method || null,
+    spent_at: normalizeDate(expense.spent_at),
+  };
+
+  const { data, error } = await client.from('expenses').insert(payload).select().single();
+  if (error) throw error;
+  return data;
+};
+
+export const updateExpense = async (expenseId, expense) => {
+  const client = requireSupabase();
+  const payload = {
+    amount: Number(expense.amount),
+    category: expense.category,
+    note: expense.note || null,
+    merchant: expense.merchant || null,
+    payment_method: expense.payment_method || null,
+    spent_at: normalizeDate(expense.spent_at),
+    updated_at: new Date().toISOString(),
+  };
+
   const { data, error } = await client
     .from('expenses')
-    .insert({ user_id: userId, ...expense })
+    .update(payload)
+    .eq('id', expenseId)
     .select()
     .single();
   if (error) throw error;
@@ -119,6 +172,7 @@ export const getExpenses = async (userId) => {
     .from('expenses')
     .select('*')
     .eq('user_id', userId)
+    .order('spent_at', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -126,9 +180,6 @@ export const getExpenses = async (userId) => {
 
 export const deleteExpense = async (expenseId) => {
   const client = requireSupabase();
-  const { error } = await client
-    .from('expenses')
-    .delete()
-    .eq('id', expenseId);
+  const { error } = await client.from('expenses').delete().eq('id', expenseId);
   if (error) throw error;
 };

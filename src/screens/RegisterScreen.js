@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView,
-  Platform, ScrollView, Alert,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { signUp } from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
@@ -32,11 +39,9 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true);
     try {
       await signUp(email.trim().toLowerCase(), password, name.trim());
-      Alert.alert(
-        'Account created!',
-        'Check your email to confirm your account, then sign in.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
-      );
+      Alert.alert('Account created', 'Check your email to confirm your account, then sign in.', [
+        { text: 'OK', onPress: () => navigation.navigate('Login') },
+      ]);
     } catch (err) {
       Alert.alert('Registration failed', err.message);
     } finally {
@@ -51,19 +56,14 @@ export default function RegisterScreen({ navigation }) {
     >
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Ionicons name="arrow-back" size={18} color={COLORS.primary} />
+          <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.subtitle}>Join SmartSense and take control of your finances</Text>
 
-        <Input
-          label="Full name"
-          value={name}
-          onChangeText={setName}
-          placeholder="John Doe"
-          error={errors.name}
-        />
+        <Input label="Full name" value={name} onChangeText={setName} placeholder="John Doe" error={errors.name} />
         <Input
           label="Email"
           value={email}
@@ -99,7 +99,7 @@ export default function RegisterScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.white },
   inner: { flexGrow: 1, padding: 28, paddingTop: 60 },
-  backBtn: { marginBottom: 28 },
+  backBtn: { marginBottom: 28, flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { color: COLORS.primary, fontSize: SIZES.base, ...FONTS.medium },
   title: { fontSize: SIZES.xxl, color: COLORS.textPrimary, ...FONTS.bold, marginBottom: 6 },
   subtitle: { fontSize: SIZES.base, color: COLORS.textSecondary, marginBottom: 28 },

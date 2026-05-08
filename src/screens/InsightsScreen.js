@@ -5,30 +5,31 @@ import { buildFinancialContext, getWeeklySummary } from '../services/gemini';
 import { Card, ProgressBar, Button, SectionTitle } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
 
-const fmt = (n) => '$' + Math.round(n).toLocaleString();
-
-const CAT_COLORS = [COLORS.primary, COLORS.success, COLORS.warning, '#E24B4A', '#9B59B6', '#1ABC9C'];
+const CAT_COLORS = [COLORS.primary, COLORS.success, COLORS.warning, COLORS.danger, '#9B59B6', '#1ABC9C'];
 
 export default function InsightsScreen() {
-  const { session, profile, expenses, getCategoryTotals, getTotalSpent } = useApp();
+  const { session, profile, expenses, getCategoryTotals, getTotalSpent, formatMoney } = useApp();
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
 
-  const income = parseFloat(profile?.income || 0);
+  const income = Number.parseFloat(profile?.income || 0);
   const spent = getTotalSpent();
   const saved = Math.max(0, income - spent);
   const savingRate = income > 0 ? Math.round((saved / income) * 100) : 0;
+  const budgetLimit = Number.parseFloat(profile?.budget_limit || 0);
+  const dailyLimit = budgetLimit > 0 ? Math.max(0, (budgetLimit - spent) / Math.max(1, daysLeftInMonth())) : 0;
   const catTotals = getCategoryTotals();
   const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+  const topCategory = sortedCats[0];
 
   const handleGetSummary = async () => {
     setSummaryLoading(true);
     try {
       const ctx = buildFinancialContext(session?.user, profile, expenses);
-      const text = await getWeeklySummary(ctx);
+      const text = await getWeeklySummary(ctx, session?.access_token);
       setSummary(text);
     } catch {
-      setSummary('Could not generate summary. Check your internet connection and API key.');
+      setSummary('Could not generate summary. Check your internet connection and AI configuration.');
     } finally {
       setSummaryLoading(false);
     }
@@ -38,43 +39,47 @@ export default function InsightsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Insights</Text>
 
-      {/* Monthly overview */}
       <SectionTitle>This month</SectionTitle>
       <View style={styles.row}>
         <Card style={[styles.overviewCard, { marginRight: 8 }]}>
           <Text style={styles.overviewLabel}>Saved</Text>
-          <Text style={[styles.overviewValue, { color: COLORS.success }]}>{fmt(saved)}</Text>
+          <Text style={[styles.overviewValue, { color: COLORS.success }]}>{formatMoney(saved)}</Text>
           <Text style={styles.overviewSub}>{savingRate}% of income</Text>
         </Card>
         <Card style={styles.overviewCard}>
           <Text style={styles.overviewLabel}>Spent</Text>
-          <Text style={[styles.overviewValue, { color: COLORS.danger }]}>{fmt(spent)}</Text>
+          <Text style={[styles.overviewValue, { color: COLORS.danger }]}>{formatMoney(spent)}</Text>
           <Text style={styles.overviewSub}>{income > 0 ? Math.round((spent / income) * 100) : 0}% of income</Text>
         </Card>
       </View>
 
-      {/* Spending by category */}
+      <SectionTitle>Next best action</SectionTitle>
+      <Card>
+        <Text style={styles.actionText}>{buildActionText(topCategory, spent, budgetLimit, dailyLimit, formatMoney)}</Text>
+      </Card>
+
       <SectionTitle>Spending breakdown</SectionTitle>
       <Card>
         {sortedCats.length === 0 ? (
           <Text style={styles.empty}>No expenses this month yet.</Text>
         ) : (
-          sortedCats.map(([cat, amt], i) => {
+          sortedCats.map(([cat, amt], index) => {
             const pct = spent > 0 ? Math.round((amt / spent) * 100) : 0;
             return (
               <View key={cat} style={styles.catRow}>
                 <View style={styles.catMeta}>
                   <Text style={styles.catName}>{cat}</Text>
-                  <Text style={styles.catAmt}>{fmt(amt)} <Text style={styles.catPct}>{pct}%</Text></Text>
+                  <Text style={styles.catAmt}>
+                    {formatMoney(amt)} <Text style={styles.catPct}>{pct}%</Text>
+                  </Text>
                 </View>
-                <ProgressBar pct={pct} color={CAT_COLORS[i % CAT_COLORS.length]} />
+                <ProgressBar pct={pct} color={CAT_COLORS[index % CAT_COLORS.length]} />
               </View>
             );
           })
         )}
       </Card>
 
-      {/* Goal progress */}
       {profile?.goal && (
         <>
           <SectionTitle>Your goal</SectionTitle>
@@ -91,7 +96,6 @@ export default function InsightsScreen() {
         </>
       )}
 
-      {/* AI Weekly Summary */}
       <SectionTitle>AI weekly summary</SectionTitle>
       <Card>
         {summaryLoading ? (
@@ -102,20 +106,35 @@ export default function InsightsScreen() {
         ) : summary ? (
           <>
             <Text style={styles.summaryText}>{summary}</Text>
-            <Button
-              title="Regenerate ↗"
-              variant="secondary"
-              onPress={handleGetSummary}
-              style={styles.regenBtn}
-            />
+            <Button title="Regenerate" variant="secondary" onPress={handleGetSummary} style={styles.regenBtn} />
           </>
         ) : (
-          <Button title="Get AI weekly summary ↗" onPress={handleGetSummary} />
+          <Button title="Get AI weekly summary" onPress={handleGetSummary} />
         )}
       </Card>
     </ScrollView>
   );
 }
+
+const daysLeftInMonth = () => {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return lastDay - now.getDate() + 1;
+};
+
+const buildActionText = (topCategory, spent, budgetLimit, dailyLimit, formatMoney) => {
+  if (!spent) return 'Log your first few expenses so SmartSense can find patterns worth acting on.';
+  if (budgetLimit > 0 && spent > budgetLimit) {
+    return `You are over your spending limit. Pause non-essential purchases and review the largest category today.`;
+  }
+  if (budgetLimit > 0) {
+    return `Keep daily spending near ${formatMoney(dailyLimit)} for the rest of the month to stay inside your limit.`;
+  }
+  if (topCategory) {
+    return `${topCategory[0]} is your biggest category this month. Set a simple cap before the next purchase.`;
+  }
+  return 'Keep tracking daily expenses; consistency is the quickest path to useful advice.';
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
@@ -126,6 +145,7 @@ const styles = StyleSheet.create({
   overviewLabel: { fontSize: SIZES.xs, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
   overviewValue: { fontSize: 22, ...FONTS.bold, marginTop: 4 },
   overviewSub: { fontSize: SIZES.xs, color: COLORS.textMuted, marginTop: 2 },
+  actionText: { fontSize: SIZES.base, color: COLORS.textPrimary, lineHeight: 22 },
   catRow: { marginBottom: 14 },
   catMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   catName: { fontSize: SIZES.base, color: COLORS.textPrimary },
