@@ -84,6 +84,22 @@ export const signIn = async (email, password) => {
   return data;
 };
 
+export const resendSignupConfirmation = async (email) => {
+  const client = requireSupabase();
+  const payload = {
+    type: 'signup',
+    email,
+  };
+
+  if (emailRedirectUrl) {
+    payload.options = { emailRedirectTo: emailRedirectUrl };
+  }
+
+  const { data, error } = await client.auth.resend(payload);
+  if (error) throw error;
+  return data;
+};
+
 export const signInWithGoogle = async () => {
   const client = requireSupabase();
   const { data, error } = await client.auth.signInWithOAuth({

@@ -8,6 +8,9 @@ export const getFriendlyAuthError = (error, fallback = 'Something went wrong. Pl
   if (message.includes('email not confirmed')) {
     return 'Please confirm your email before signing in.';
   }
+  if (message.includes('taking too long')) {
+    return 'The request is taking too long. Check your connection and try again.';
+  }
   if (message.includes('redirect') || message.includes('not allowed')) {
     return 'Authentication redirect is not configured for this domain. Check Supabase Auth URL settings.';
   }
@@ -25,6 +28,11 @@ export const getFriendlyAuthError = (error, fallback = 'Something went wrong. Pl
   }
 
   return fallback;
+};
+
+export const isEmailConfirmationError = (error) => {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('email not confirmed') || message.includes('confirm your email');
 };
 
 export const withTimeout = (promise, label, timeoutMs = 20000) =>

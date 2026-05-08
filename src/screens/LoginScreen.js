@@ -10,17 +10,24 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { signIn } from '../services/supabase';
+import {
+  isSupabaseConfigured,
+  resendSignupConfirmation,
+  signIn,
+  supabaseConfigError,
+} from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
-import { getFriendlyAuthError, withTimeout } from '../utils/authErrors';
+import { getFriendlyAuthError, isEmailConfirmationError, withTimeout } from '../utils/authErrors';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [errors, setErrors] = useState({});
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(supabaseConfigError || '');
+  const [canResendConfirmation, setCanResendConfirmation] = useState(false);
 
   const validate = () => {
     const e = {};
@@ -32,17 +39,46 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
+    if (!isSupabaseConfigured) {
+      setNotice(supabaseConfigError);
+      return;
+    }
     if (!validate() || loading) return;
     setLoading(true);
     setNotice('');
+    setCanResendConfirmation(false);
     try {
       await withTimeout(signIn(email.trim().toLowerCase(), password), 'Sign in');
     } catch (err) {
       const message = getFriendlyAuthError(err, 'Could not sign in. Check your details and try again.');
       setNotice(message);
+      setCanResendConfirmation(isEmailConfirmationError(err));
       if (Platform.OS !== 'web') Alert.alert('Login failed', message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim() || resending) return;
+    setResending(true);
+    setNotice('');
+    try {
+      await withTimeout(
+        resendSignupConfirmation(email.trim().toLowerCase()),
+        'Confirmation email resend',
+      );
+      setCanResendConfirmation(false);
+      setNotice('Confirmation email sent. Check your inbox, then sign in again.');
+    } catch (err) {
+      const message = getFriendlyAuthError(
+        err,
+        'Could not resend the confirmation email. Try again in a moment.',
+      );
+      setNotice(message);
+      if (Platform.OS !== 'web') Alert.alert('Resend failed', message);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -85,7 +121,22 @@ export default function LoginScreen({ navigation }) {
             error={errors.password}
           />
 
-          <Button title="Sign in" onPress={handleLogin} loading={loading} />
+          <Button
+            title="Sign in"
+            onPress={handleLogin}
+            loading={loading}
+            disabled={!isSupabaseConfigured}
+          />
+
+          {canResendConfirmation && (
+            <Button
+              title="Resend confirmation email"
+              variant="secondary"
+              onPress={handleResendConfirmation}
+              loading={resending}
+              style={{ marginTop: 10 }}
+            />
+          )}
 
           <TouchableOpacity
             onPress={() => navigation.navigate('ForgotPassword', { email: email.trim().toLowerCase() })}

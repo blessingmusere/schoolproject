@@ -29,6 +29,7 @@ test('password reset screens are wired into the app', () => {
   assert.match(app, /ResetPassword/);
   assert.match(supabaseService, /resetPasswordForEmail/);
   assert.match(supabaseService, /updateUser\(\{ password \}\)/);
+  assert.match(supabaseService, /auth\.resend/);
 });
 
 test('signup does not require a hardcoded frontend email redirect', () => {

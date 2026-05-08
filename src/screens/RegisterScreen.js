@@ -10,7 +10,12 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { signUp } from '../services/supabase';
+import {
+  isSupabaseConfigured,
+  resendSignupConfirmation,
+  signUp,
+  supabaseConfigError,
+} from '../services/supabase';
 import { Button, Input } from '../components/UI';
 import { COLORS, SIZES, FONTS } from '../constants/theme';
 import { getFriendlyAuthError, withTimeout } from '../utils/authErrors';
@@ -21,8 +26,10 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [errors, setErrors] = useState({});
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(supabaseConfigError || '');
+  const [confirmationPending, setConfirmationPending] = useState(false);
 
   const validate = () => {
     const e = {};
@@ -37,9 +44,14 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleRegister = async () => {
+    if (!isSupabaseConfigured) {
+      setNotice(supabaseConfigError);
+      return;
+    }
     if (!validate() || loading) return;
     setLoading(true);
     setNotice('');
+    setConfirmationPending(false);
     try {
       const result = await withTimeout(
         signUp(email.trim().toLowerCase(), password, name.trim()),
@@ -55,10 +67,9 @@ export default function RegisterScreen({ navigation }) {
         ? 'Account created. Check your email to confirm it, then sign in.'
         : 'If this email is allowed, a confirmation email will be sent. Check your inbox, then sign in.';
       setNotice(message);
+      setConfirmationPending(true);
       if (Platform.OS !== 'web') {
         Alert.alert('Account created', message, [{ text: 'OK', onPress: () => navigation.navigate('Login') }]);
-      } else {
-        setTimeout(() => navigation.navigate('Login'), 1200);
       }
     } catch (err) {
       const message = getFriendlyAuthError(err, 'Could not create your account. Please try again.');
@@ -66,6 +77,27 @@ export default function RegisterScreen({ navigation }) {
       if (Platform.OS !== 'web') Alert.alert('Registration failed', message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim() || resending) return;
+    setResending(true);
+    try {
+      await withTimeout(
+        resendSignupConfirmation(email.trim().toLowerCase()),
+        'Confirmation email resend',
+      );
+      setNotice('Confirmation email sent again. Check your inbox, then sign in.');
+    } catch (err) {
+      const message = getFriendlyAuthError(
+        err,
+        'Could not resend the confirmation email. Try again in a moment.',
+      );
+      setNotice(message);
+      if (Platform.OS !== 'web') Alert.alert('Resend failed', message);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -122,7 +154,27 @@ export default function RegisterScreen({ navigation }) {
           error={errors.confirm}
         />
 
-        <Button title="Create account" onPress={handleRegister} loading={loading} />
+        <Button
+          title="Create account"
+          onPress={handleRegister}
+          loading={loading}
+          disabled={!isSupabaseConfigured}
+        />
+
+        {confirmationPending && (
+          <>
+            <Button
+              title="Resend confirmation email"
+              variant="secondary"
+              onPress={handleResendConfirmation}
+              loading={resending}
+              style={{ marginTop: 10 }}
+            />
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.signInWrap}>
+              <Text style={styles.signInText}>Go to sign in</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -142,4 +194,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   noticeText: { color: COLORS.primaryDark, fontSize: SIZES.sm, lineHeight: 18 },
+  signInWrap: { alignItems: 'center', marginTop: 16 },
+  signInText: { color: COLORS.primary, fontSize: SIZES.base, ...FONTS.semibold },
 });
