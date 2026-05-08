@@ -31,6 +31,13 @@ test('password reset screens are wired into the app', () => {
   assert.match(supabaseService, /updateUser\(\{ password \}\)/);
 });
 
+test('signup does not require a hardcoded frontend email redirect', () => {
+  const supabaseService = fs.readFileSync(path.join(root, 'src/services/supabase.js'), 'utf8');
+
+  assert.match(supabaseService, /EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL/);
+  assert.doesNotMatch(supabaseService, /emailRedirectTo: getEmailRedirectUrl/);
+});
+
 test('README reflects Gemini rather than stale OpenAI setup', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.match(readme, /Gemini 2\.5 Flash/);

@@ -8,6 +8,12 @@ export const getFriendlyAuthError = (error, fallback = 'Something went wrong. Pl
   if (message.includes('email not confirmed')) {
     return 'Please confirm your email before signing in.';
   }
+  if (message.includes('redirect') || message.includes('not allowed')) {
+    return 'Authentication redirect is not configured for this domain. Check Supabase Auth URL settings.';
+  }
+  if (message.includes('already registered') || message.includes('already exists')) {
+    return 'An account may already exist for this email. Try signing in or reset your password.';
+  }
   if (message.includes('rate limit') || message.includes('too many')) {
     return 'Too many attempts. Please wait a moment and try again.';
   }

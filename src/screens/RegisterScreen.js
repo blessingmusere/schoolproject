@@ -51,7 +51,9 @@ export default function RegisterScreen({ navigation }) {
         return;
       }
 
-      const message = 'Account created. Check your email to confirm it, then sign in.';
+      const message = result?.user
+        ? 'Account created. Check your email to confirm it, then sign in.'
+        : 'If this email is allowed, a confirmation email will be sent. Check your inbox, then sign in.';
       setNotice(message);
       if (Platform.OS !== 'web') {
         Alert.alert('Account created', message, [{ text: 'OK', onPress: () => navigation.navigate('Login') }]);

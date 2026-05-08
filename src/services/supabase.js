@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const emailRedirectUrl = process.env.EXPO_PUBLIC_AUTH_EMAIL_REDIRECT_URL;
 const hasValidSupabaseUrl = /^https:\/\/.+\.supabase\.co$/.test(supabaseUrl || '');
 
 const getAuthRedirectUrl = () => {
@@ -13,14 +14,6 @@ const getAuthRedirectUrl = () => {
   }
 
   return Linking.createURL('reset-password');
-};
-
-const getEmailRedirectUrl = () => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/auth/callback`;
-  }
-
-  return Linking.createURL('auth/callback');
 };
 
 export const supabaseConfigError = !supabaseUrl
@@ -65,13 +58,20 @@ const normalizeDate = (dateValue) => {
 
 export const signUp = async (email, password, name) => {
   const client = requireSupabase();
+  const options = {
+    data: { full_name: name },
+  };
+
+  // Let Supabase use its configured Site URL by default. Deployed web domains often fail
+  // signup when a frontend URL is not explicitly allow-listed in Supabase Auth settings.
+  if (emailRedirectUrl) {
+    options.emailRedirectTo = emailRedirectUrl;
+  }
+
   const { data, error } = await client.auth.signUp({
     email,
     password,
-    options: {
-      data: { full_name: name },
-      emailRedirectTo: getEmailRedirectUrl(),
-    },
+    options,
   });
   if (error) throw error;
   return data;
