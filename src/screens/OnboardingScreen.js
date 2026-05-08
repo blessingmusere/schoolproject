@@ -116,7 +116,9 @@ export default function OnboardingScreen() {
           reminder_time: newAnswers.reminderTime?.[0],
         };
         await saveProfile(session.user.id, profile);
-        await scheduleDailyReminder(profile.reminder_time);
+        await scheduleDailyReminder(profile.reminder_time).catch((error) => {
+          console.warn('Reminder scheduling skipped:', error?.message || error);
+        });
         await refreshProfile();
       } catch (err) {
         Alert.alert('Error', err.message);

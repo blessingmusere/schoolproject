@@ -44,6 +44,10 @@ const requireSupabase = () => {
   return supabase;
 };
 
+const isSchemaCacheError = (error) =>
+  error?.code === 'PGRST204' ||
+  /schema cache|could not find .* column|column .* does not exist/i.test(error?.message || '');
+
 const normalizeDate = (dateValue) => {
   if (!dateValue) return new Date().toISOString();
   const date = new Date(dateValue);
@@ -107,12 +111,28 @@ export const getSession = async () => {
 
 export const saveProfile = async (userId, profile) => {
   const client = requireSupabase();
-  const { error } = await client.from('profiles').upsert({
+  const payload = {
     user_id: userId,
     currency: 'USD',
     ...profile,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  const { error } = await client.from('profiles').upsert(payload);
+  if (error && isSchemaCacheError(error)) {
+    const legacyProfile = {
+      user_id: userId,
+      income: profile.income,
+      categories: profile.categories,
+      goal: profile.goal,
+      weaknesses: profile.weaknesses,
+      reminder_time: profile.reminder_time,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: legacyError } = await client.from('profiles').upsert(legacyProfile);
+    if (legacyError) throw legacyError;
+    return;
+  }
   if (error) throw error;
 };
 
@@ -140,6 +160,21 @@ export const addExpense = async (userId, expense) => {
   };
 
   const { data, error } = await client.from('expenses').insert(payload).select().single();
+  if (error && isSchemaCacheError(error)) {
+    const legacyPayload = {
+      user_id: userId,
+      amount: Number(expense.amount),
+      category: expense.category,
+      note: expense.note || expense.merchant || null,
+    };
+    const { data: legacyData, error: legacyError } = await client
+      .from('expenses')
+      .insert(legacyPayload)
+      .select()
+      .single();
+    if (legacyError) throw legacyError;
+    return legacyData;
+  }
   if (error) throw error;
   return data;
 };
@@ -174,6 +209,15 @@ export const getExpenses = async (userId) => {
     .eq('user_id', userId)
     .order('spent_at', { ascending: false })
     .order('created_at', { ascending: false });
+  if (error && isSchemaCacheError(error)) {
+    const { data: legacyData, error: legacyError } = await client
+      .from('expenses')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (legacyError) throw legacyError;
+    return legacyData || [];
+  }
   if (error) throw error;
   return data || [];
 };

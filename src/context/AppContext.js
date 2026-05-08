@@ -39,7 +39,11 @@ export const AppProvider = ({ children }) => {
 
   const loadUserData = async (userId) => {
     try {
-      const [prof, exps] = await Promise.all([getProfile(userId), getExpenses(userId)]);
+      const prof = await getProfile(userId);
+      const exps = await getExpenses(userId).catch((error) => {
+        console.error('Load expenses error:', error);
+        return [];
+      });
       setProfile(prof);
       setExpenses(exps);
     } catch (e) {

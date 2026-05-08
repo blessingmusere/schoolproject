@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -9,6 +10,8 @@ Notifications.setNotificationHandler({
 });
 
 export const requestPermissions = async () => {
+  if (Platform.OS === 'web') return false;
+
   const { status } = await Notifications.requestPermissionsAsync();
   return status === 'granted';
 };
@@ -21,6 +24,8 @@ const TIME_MAP = {
 };
 
 export const scheduleDailyReminder = async (preferredTime = 'Evening (6pm)') => {
+  if (Platform.OS === 'web') return false;
+
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   const granted = await requestPermissions();
@@ -45,5 +50,7 @@ export const scheduleDailyReminder = async (preferredTime = 'Evening (6pm)') => 
 };
 
 export const cancelAllReminders = async () => {
+  if (Platform.OS === 'web') return;
+
   await Notifications.cancelAllScheduledNotificationsAsync();
 };
